@@ -123,7 +123,7 @@ public final class ActorSystem: _Distributed.ActorTransport, @unchecked Sendable
         return box.value
     }
 
-    internal let _nodeDeathWatcherStore: ManagedAtomicLazyReference<Box<NodeDeathWatcherShell.Ref?>>
+    private let _nodeDeathWatcherStore: ManagedAtomicLazyReference<Box<NodeDeathWatcherShell.Ref?>>
     internal var _nodeDeathWatcher: NodeDeathWatcherShell.Ref? {
         guard let box = _nodeDeathWatcherStore.load() else {
             fatalError("Somehow attempted to load system.nodeDeathWatcher before it was initialized!")

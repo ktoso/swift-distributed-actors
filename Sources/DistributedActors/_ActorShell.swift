@@ -145,9 +145,12 @@ public final class _ActorShell<Message: ActorMessage>: _ActorContext<Message>, A
     // MARK: _ActorShell implementation
 
     internal init(
-        system: ActorSystem, parent: AddressableActorRef,
-        behavior: _Behavior<Message>, address: ActorAddress,
-        props: _Props, dispatcher: MessageDispatcher
+        system: ActorSystem,
+        parent: AddressableActorRef,
+        behavior: _Behavior<Message>,
+        address: ActorAddress,
+        props: _Props,
+        dispatcher: MessageDispatcher
     ) {
         self._system = system
         self._parent = parent
@@ -159,7 +162,7 @@ public final class _ActorShell<Message: ActorMessage>: _ActorContext<Message>, A
         self._log = Logger.make(system.log, path: address.path)
 
         self.supervisor = _Supervision.supervisorFor(system, initialBehavior: behavior, props: props.supervision)
-        self._deathWatch = DeathWatchImpl(nodeDeathWatcher: system._nodeDeathWatcherStore.load()?.value ?? system.deadLetters.adapted())
+        self._deathWatch = DeathWatchImpl(nodeDeathWatcher: system._nodeDeathWatcher ?? system.deadLetters.adapted())
 
         self.namingContext = ActorNamingContext()
 
