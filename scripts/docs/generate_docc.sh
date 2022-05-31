@@ -11,7 +11,7 @@ cleanup()
 }
 trap cleanup exit $?
 
-VERSION=6.x.x
+VERSION=1.0.0-beta
 SG_FOLDER=.build/symbol-graphs
 DA_SG_FOLDER=.build/swift-distributed-actors-symbol-graphs
 OUTPUT_PATH=docs/swift-distributed-actors/$VERSION
