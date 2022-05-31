@@ -1,57 +1,55 @@
-#!/bin/bash
-##===----------------------------------------------------------------------===##
-##
-## This source file is part of the Swift Distributed Actors open source project
-##
-## Copyright (c) 2018-2019 Apple Inc. and the Swift Distributed Actors project authors
-## Licensed under Apache License v2.0
-##
-## See LICENSE.txt for license information
-## See CONTRIBUTORS.md for the list of Swift Distributed Actors project authors
-##
-## SPDX-License-Identifier: Apache-2.0
-##
-##===----------------------------------------------------------------------===##
+#!/usr/bin/env bash
+set -eux
 
-set -e
+TEMP_DIR="$(pwd)/temp"
 
-my_path="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-root_path="$my_path/../.."
+cleanup()
+{
+   if [ -n "$TEMP_DIR" ]; then
+       rm -rf $TEMP_DIR
+   fi
+}
+trap cleanup exit $?
 
-short_version=$(git describe --abbrev=0 --tags 2> /dev/null || echo "0.0.0")
-long_version=$(git describe            --tags 2> /dev/null || echo "0.0.0")
-if [[ "$short_version" == "$long_version" ]]; then
-  version="${short_version}"
-  doc_link_version="${version}"
-else
-  version="${short_version}-dev"
-  doc_link_version="main" # since dev is latest development we point to main
-fi
-echo "Project version: ${version}"
+VERSION=6.x.x
+SG_FOLDER=.build/symbol-graphs
+DA_SG_FOLDER=.build/swift-distributed-actors-symbol-graphs
+OUTPUT_PATH=docs/swift-distributed-actors/$VERSION
 
+BUILD_SYMBOLS=1
 
-# all our public modules which we want to document, begin with `DistributedActors`
-modules=(
-  DistributedActors
-)
-
-# Build documentation
-
-cd $root_path
-mkdir -p $root_path/.build/symbol-graphs
-
-declare -r SWIFT="$TOOLCHAIN/usr/bin/swift"
-
-for module in "${modules[@]}"; do
-  echo "Building symbol-graph for module [$module]..."
-  $SWIFT build --target $module \
-    -Xswiftc -emit-symbol-graph \
-    -Xswiftc -emit-symbol-graph-dir \
-    -Xswiftc $root_path/.build/symbol-graphs
-
-  echo "Done building module [$module], moving symbols..."
-  mkdir -p $root_path/.build/swift-docc-symbol-graphs
-  mv $root_path/.build/symbol-graphs/$module* $root_path/.build/swift-docc-symbol-graphs
+while getopts 's' option
+do
+   case $option in
+       s) BUILD_SYMBOLS=0;;
+   esac
 done
 
-echo "Done."
+if [ -z "${DOCC_HTML_DIR:-}" ]; then
+  git clone https://github.com/apple/swift-docc-render-artifact $TEMP_DIR/swift-docc-render-artifact
+  export DOCC_HTML_DIR="$TEMP_DIR/swift-docc-render-artifact/dist"
+fi
+
+if test "$BUILD_SYMBOLS" == 1; then
+   # build symbol graphs
+   mkdir -p $SG_FOLDER
+   swift build \
+       -Xswiftc -emit-symbol-graph \
+       -Xswiftc -emit-symbol-graph-dir -Xswiftc $SG_FOLDER
+   # Copy DistributedActors symbol graph into separate folder
+   mkdir -p $DA_SG_FOLDER
+   cp $SG_FOLDER/DistributedActors* $DA_SG_FOLDER
+   ls $DA_SG_FOLDER
+fi
+
+# Build documentation
+mkdir -p $OUTPUT_PATH
+rm -rf $OUTPUT_PATH/*
+xcrun docc convert DistributedActors.docc \
+   --transform-for-static-hosting \
+   --hosting-base-path /swift-distributed-actors/$VERSION \
+   --fallback-display-name DistributedActors \
+   --fallback-bundle-identifier com.apple.swift-distributed-actors \
+   --fallback-bundle-version 1 \
+   --additional-symbol-graph-dir $DA_SG_FOLDER \
+   --output-path $OUTPUT_PATH
