@@ -636,8 +636,7 @@ extension OpLogDistributedReceptionist {
             } catch {
                 switch error {
                 case RemoteCallError.clusterAlreadyShutDown:
-                    // ignore silently; this often happens during tests when we terminate systems while interacting with them
-                    ()
+                    () // ignore silently; this often happens during tests when we terminate systems while interacting with them
                 default:
                     log.error("Error: \(error)")
                 }

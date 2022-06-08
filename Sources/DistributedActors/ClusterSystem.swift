@@ -482,6 +482,7 @@ public class ClusterSystem: DistributedActorSystem, @unchecked Sendable {
     /// - Returns: A `Shutdown` value that can be waited upon until the system has completed the shutdown.
     @discardableResult
     public func shutdown(queue: DispatchQueue = DispatchQueue.global(), afterShutdownCompleted: @escaping (Error?) -> Void = { _ in () }) -> Shutdown {
+        log.error("SHUTTING DOWN")
         guard self.shutdownFlag.loadThenWrappingIncrement(by: 1, ordering: .relaxed) == 0 else {
             // shutdown already kicked off by someone else
             afterShutdownCompleted(nil)
@@ -511,6 +512,7 @@ public class ClusterSystem: DistributedActorSystem, @unchecked Sendable {
             self._associationTombstoneCleanupTask = nil
 
             do {
+                pprint("SHUTDOWN ELG... \(self)")
                 try self._eventLoopGroup.syncShutdownGracefully()
                 // self._receptionistRef = self.deadLetters.adapted()
             } catch {
@@ -987,7 +989,7 @@ extension ClusterSystem {
         let recipient = _RemoteClusterActorPersonality<InvocationMessage>(shell: clusterShell, id: actor.id._asRemote, system: self)
         let arguments = invocation.arguments
 
-        let reply: RemoteCallReply<Res> = try await self.withCallID { callID in
+        let reply: RemoteCallReply<Res> = try await self.withCallID(target: target) { callID in
             let invocation = InvocationMessage(
                 callID: callID,
                 targetIdentifier: target.identifier,
@@ -1022,7 +1024,7 @@ extension ClusterSystem {
         let recipient = _RemoteClusterActorPersonality<InvocationMessage>(shell: clusterShell, id: actor.id._asRemote, system: self)
         let arguments = invocation.arguments
 
-        let reply: RemoteCallReply<_Done> = try await self.withCallID { callID in
+        let reply: RemoteCallReply<_Done> = try await self.withCallID(target: target) { callID in
             let invocation = InvocationMessage(
                 callID: callID,
                 targetIdentifier: target.identifier,
@@ -1037,6 +1039,7 @@ extension ClusterSystem {
     }
 
     private func withCallID<Reply>(
+        target: RemoteCallTarget,
         body: (CallID) -> Void
     ) async throws -> Reply
         where Reply: AnyRemoteCallReply
@@ -1051,7 +1054,22 @@ extension ClusterSystem {
             }
             self.inFlightCallLock.withLockVoid {
                 if let continuation = self._inFlightCalls.removeValue(forKey: callID) {
-                    continuation.resume(throwing: RemoteCallError.timedOut(TimeoutError(message: "Remote call timed out", timeout: timeout)))
+                    let error: Error
+
+                    if isShuttingDown {
+                        // if we're shutting down; we may not be getting responses simply
+                        // because we've shut down associations and cannot receive them anymore.
+                        // Some subsystems may ignore those errors, since they are "expected".
+                        //
+                        // If we're shutting down, it is okay to not get acknowledgements to calls for example,
+                        // and we don't care about them missing -- we're shutting down anyway.
+                        error = RemoteCallError.clusterAlreadyShutDown
+                    } else {
+                        error = RemoteCallError.timedOut(
+                            TimeoutError(message: "Remote call [\(callID)] to [\(target)] timed out", timeout: timeout))
+                    }
+
+                    continuation.resume(throwing: error)
                 }
             }
         }

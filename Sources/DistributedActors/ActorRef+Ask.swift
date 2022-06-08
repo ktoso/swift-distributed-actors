@@ -71,17 +71,17 @@ extension _ActorRef: ReceivesQuestions {
         _ makeQuestion: @escaping (_ActorRef<Answer>) -> Question
     ) -> AskResponse<Answer> {
         guard let system = self._system else {
-            return .completed(.failure(RemoteCallError.clusterAlreadyShutDown))
+            return .completed(askLocation: "\(file):\(line)", .failure(RemoteCallError.clusterAlreadyShutDown))
         }
 
         if system.isShuttingDown {
-            return .completed(.failure(RemoteCallError.clusterAlreadyShutDown))
+            return .completed(askLocation: "\(file):\(line)", .failure(RemoteCallError.clusterAlreadyShutDown))
         }
 
         do {
             try system.serialization._ensureSerializer(answerType)
         } catch {
-            return AskResponse.completed(.failure(error))
+            return AskResponse.completed(askLocation: "\(file):\(line)", .failure(error))
         }
 
         let promise = system._eventLoopGroup.next().makePromise(of: answerType)
@@ -120,7 +120,7 @@ extension _ActorRef: ReceivesQuestions {
             promise.fail(error)
         }
 
-        return .nioFuture(promise.futureResult)
+        return .nioFuture(askLocation: "\(file):\(line)", promise.futureResult)
     }
 }
 
@@ -136,7 +136,7 @@ extension _ActorRef: ReceivesQuestions {
 ///            enclosing actor state is NOT SAFE, as the underlying future MAY not be scheduled on the same context
 ///            as the actor.
 enum AskResponse<Value> {
-    case completed(Result<Value, Error>)
+    case completed(askLocation: String, Result<Value, Error>)
 
     /// **WARNING** Use with caution.
     ///
@@ -144,7 +144,7 @@ enum AskResponse<Value> {
     ///
     /// - warning: DO NOT access or modify actor state from any of the future's callbacks as they MAY run concurrently to the actor.
     /// - warning: `AskResponse` may in the future no longer be backed by a NIO future and this option deprecated.
-    case nioFuture(EventLoopFuture<Value>)
+    case nioFuture(askLocation: String, EventLoopFuture<Value>)
 }
 
 extension AskResponse {
@@ -152,9 +152,9 @@ extension AskResponse {
     @available(*, deprecated, message: "Blocking API will be removed in favor of async await")
     func wait() throws -> Value {
         switch self {
-        case .completed(let result):
+        case .completed(let loc, let result):
             return try result.get()
-        case .nioFuture(let nioFuture):
+        case .nioFuture(let loc, let nioFuture):
             return try nioFuture.wait()
         }
     }
@@ -164,9 +164,9 @@ extension AskResponse {
     var value: Value {
         get async throws {
             switch self {
-            case .completed(let result):
+            case .completed(let loc, let result):
                 return try result.get()
-            case .nioFuture(let nioFuture):
+            case .nioFuture(let loc, let nioFuture):
                 return try await nioFuture.get()
             }
         }
@@ -176,9 +176,9 @@ extension AskResponse {
 extension AskResponse: _AsyncResult {
     func _onComplete(_ callback: @escaping (Result<Value, Error>) -> Void) {
         switch self {
-        case .completed(let result):
+        case .completed(let loc, let result):
             callback(result)
-        case .nioFuture(let nioFuture):
+        case .nioFuture(let loc, let nioFuture):
             nioFuture._onComplete { result in
                 callback(result)
             }
@@ -193,12 +193,12 @@ extension AskResponse: _AsyncResult {
         switch self {
         case .completed:
             return self
-        case .nioFuture(let nioFuture):
+        case .nioFuture(let loc, let nioFuture):
             // TODO: ask errors should be lovely and include where they were asked from (source loc)
             let eventLoop = nioFuture.eventLoop
             let promise: EventLoopPromise<Value> = eventLoop.makePromise()
             let timeoutTask = eventLoop.scheduleTask(in: timeout.toNIO) {
-                promise.fail(RemoteCallError.timedOut(TimeoutError(message: "\(type(of: self)) timed out after \(timeout.prettyDescription)", timeout: timeout)))
+                promise.fail(RemoteCallError.timedOut(TimeoutError(message: "\(type(of: self)) timed out after \(timeout.prettyDescription); Ask location: \(loc)", timeout: timeout)))
             }
             nioFuture.whenFailure {
                 timeoutTask.cancel()
@@ -209,7 +209,7 @@ extension AskResponse: _AsyncResult {
                 promise.succeed($0)
             }
 
-            return .nioFuture(promise.futureResult)
+            return .nioFuture(askLocation: loc, promise.futureResult)
         }
     }
 
@@ -231,15 +231,15 @@ extension AskResponse {
     /// Transforms successful response of `Value` type to `NewValue` type.
     func map<NewValue>(_ callback: @escaping (Value) -> NewValue) -> AskResponse<NewValue> {
         switch self {
-        case .completed(let result):
+        case .completed(let loc, let result):
             switch result {
             case .success(let value):
-                return .completed(.success(callback(value)))
+                return .completed(askLocation: loc, .success(callback(value)))
             case .failure(let error):
-                return .completed(.failure(error))
+                return .completed(askLocation: loc, .failure(error))
             }
-        case .nioFuture(let nioFuture):
-            return .nioFuture(nioFuture.map { callback($0) })
+        case .nioFuture(let loc, let nioFuture):
+            return .nioFuture(askLocation: loc, nioFuture.map { callback($0) })
         }
     }
 }
