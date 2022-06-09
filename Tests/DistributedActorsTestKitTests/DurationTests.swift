@@ -29,4 +29,16 @@ class DurationTests: XCTestCase {
         Duration.hours(2).prettyDescription.shouldEqual("2h")
         Duration.hours(24).prettyDescription.shouldEqual("1d")
     }
+    
+    func test_effectivelyInfinite() {
+        let base = Clock.continuous.now + Duration.nanoseconds(.max)
+        var more = base
+        more += Duration.nanoseconds(.max)
+        more += Duration.nanoseconds(.max)
+        more += Duration.nanoseconds(.max)
+        
+        base.isEffectivelyInfinite.shouldBeTrue()
+        more.isEffectivelyInfinite.shouldBeTrue()
+        
+    }
 }
