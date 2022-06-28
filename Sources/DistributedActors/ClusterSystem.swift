@@ -878,6 +878,11 @@ extension ClusterSystem {
             self.log.trace("Resolved \(id) as remote, on node: \(id.uniqueNode)")
             return nil
         }
+        
+        if let interceptor = _Props.forSpawn._remoteCallInterceptor {
+            log.warning("boss: resolve as remote, it has an interceptor...")
+            return nil
+        }
 
         return self.namingLock.withLock {
             guard let managed = self._managedDistributedActors.get(identifiedBy: id) else {
@@ -985,10 +990,21 @@ extension ClusterSystem {
         Err: Error,
         Res: Codable
     {
-        guard let clusterShell = _cluster else {
+        log.warning("boss: remote call \(invocation) on \(actor)")
+        
+        guard self.shutdownFlag.load(ordering: .relaxed) == 0 else {
             throw RemoteCallError.clusterAlreadyShutDown
         }
-        guard self.shutdownFlag.load(ordering: .relaxed) == 0 else {
+        
+        // FIXME: we'd get this from actor.id.context.interceptor
+        // if let interceptor = actor.id._
+        if let interceptor = _Props.forSpawn._remoteCallInterceptor {
+            pprint("boss: intercept: \(interceptor)")
+            return try await interceptor.interceptRemoteCall(on: actor, target: target, invocation: &invocation, throwing: throwing, returning: returning)
+        }
+        
+        
+        guard let clusterShell = _cluster else {
             throw RemoteCallError.clusterAlreadyShutDown
         }
 
@@ -1023,13 +1039,15 @@ extension ClusterSystem {
         Act.ID == ActorID,
         Err: Error
     {
-        guard let clusterShell = self._cluster else {
-            throw RemoteCallError.clusterAlreadyShutDown
-        }
         guard self.shutdownFlag.load(ordering: .relaxed) == 0 else {
             throw RemoteCallError.clusterAlreadyShutDown
         }
 
+        
+        guard let clusterShell = self._cluster else {
+            throw RemoteCallError.clusterAlreadyShutDown
+        }
+        
         let recipient = _RemoteClusterActorPersonality<InvocationMessage>(shell: clusterShell, id: actor.id._asRemote, system: self)
         let arguments = invocation.arguments
 
@@ -1168,7 +1186,13 @@ extension ClusterSystem {
     }
 
     private func resolve(id: ActorID) -> (any DistributedActor)? {
-        self.namingLock.withLock {
+        let props = _Props.forSpawn
+        
+        if props._remoteCallInterceptor != nil {
+            return nil
+        }
+        
+        return self.namingLock.withLock {
             self._managedDistributedActors.get(identifiedBy: id)
         }
     }
@@ -1177,39 +1201,57 @@ extension ClusterSystem {
 public struct ClusterInvocationResultHandler: DistributedTargetInvocationResultHandler {
     public typealias SerializationRequirement = any Codable
 
-    let system: ClusterSystem
-    let clusterShell: ClusterShell
-    let callID: ClusterSystem.CallID
-    let channel: Channel
-    let recipient: ClusterSystem.ActorID // FIXME(distributed): remove; we need it only because TransportEnvelope requires it
+    let system: ClusterSystem?
+    let clusterShell: ClusterShell?
+    let callID: ClusterSystem.CallID?
+    let channel: Channel?
+    let recipient: ClusterSystem.ActorID? // FIXME(distributed): remove; we need it only because TransportEnvelope requires it
 
+    let cc: CheckedContinuation<Any, Error>?
+    
+    init(_ cc: CheckedContinuation<Any, Error>) {
+        self.cc = cc
+        self.system = nil
+        self.clusterShell = nil
+        self.callID = nil
+        self.channel = nil
+        self.recipient = nil
+        
+    }
+    
     init(system: ClusterSystem, clusterShell: ClusterShell, callID: ClusterSystem.CallID, channel: Channel, recipient: ClusterSystem.ActorID) {
         self.system = system
         self.clusterShell = clusterShell
         self.callID = callID
         self.channel = channel
         self.recipient = recipient
+        self.cc = nil
     }
 
     public func onReturn<Success: Codable>(value: Success) async throws {
-        let reply = RemoteCallReply<Success>(callID: self.callID, value: value)
-        try await self.channel.writeAndFlush(TransportEnvelope(envelope: Payload(payload: .message(reply)), recipient: self.recipient))
+        if let c = cc {
+            c.resume(returning: value)
+            return
+        }
+        
+        let reply = RemoteCallReply<Success>(callID: self.callID!, value: value)
+        try await self.channel!.writeAndFlush(TransportEnvelope(envelope: Payload(payload: .message(reply)), recipient: self.recipient!))
     }
 
     public func onReturnVoid() async throws {
-        let reply = RemoteCallReply<_Done>(callID: self.callID, value: .done)
-        try await self.channel.writeAndFlush(TransportEnvelope(envelope: Payload(payload: .message(reply)), recipient: self.recipient))
+        let reply = RemoteCallReply<_Done>(callID: self.callID!, value: .done)
+        try await self.channel!.writeAndFlush(TransportEnvelope(envelope: Payload(payload: .message(reply)), recipient: self.recipient!))
     }
 
     public func onThrow<Err: Error>(error: Err) async throws {
-        self.system.log.warning("Result handler, onThrow: \(error)")
+        self.system!.log.warning("Result handler, onThrow: \(error)")
         let reply: RemoteCallReply<_Done>
         if let codableError = error as? (Error & Codable) {
-            reply = .init(callID: self.callID, error: codableError)
+            reply = .init(callID: self.callID!, error: codableError)
         } else {
-            reply = .init(callID: self.callID, error: GenericRemoteCallError(message: "Remote call error of [\(type(of: error as Any))] type occurred"))
+            reply = .init(callID: self.callID!, error: GenericRemoteCallError(message: "Remote call error of [\(type(of: error as Any))] type occurred"))
         }
-        try await self.channel.writeAndFlush(TransportEnvelope(envelope: Payload(payload: .message(reply)), recipient: self.recipient))
+        try await self.channel!.writeAndFlush(TransportEnvelope(envelope: Payload(payload: .message(reply)), recipient: self.recipient!))
     }
 }
 

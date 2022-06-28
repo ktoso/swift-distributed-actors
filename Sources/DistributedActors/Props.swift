@@ -50,6 +50,8 @@ public struct _Props: @unchecked Sendable {
     /// This is likely to go away as we remove the actor tree, and move completely to 'distributed actor'.
     internal var _systemActor: Bool = false
 
+    internal var _remoteCallInterceptor: Optional<any RemoteCallInterceptor> = nil
+    
     /// INTERNAL API: Allows to request the actor system to spawn this actor under a specific name
     /// Used only with 'distributed actor' as a way to pass path to the `assignIdentity` call.
     /// // TODO(distributed): We should instead allow for an explicit way to pass params to the transport.
@@ -80,8 +82,6 @@ public struct _Props: @unchecked Sendable {
 // ==== ----------------------------------------------------------------------------------------------------------------
 // MARK: Dispatcher _Props
 
-// TODO: likely better as class hierarchy, by we'll see...
-
 extension _Props {
     /// Creates a new `_Props` with default values, and overrides the `dispatcher` with the provided one.
     public static func dispatcher(_ dispatcher: _DispatcherProps) -> _Props {
@@ -95,6 +95,19 @@ extension _Props {
         var props = self
         props.dispatcher = dispatcher
         return props
+    }
+}
+
+extension _Props {
+    public static func withRemoteCallInterceptor(_ interceptor: some RemoteCallInterceptor) -> Self {
+        var copy = _Props()
+        copy._remoteCallInterceptor = interceptor
+        return copy
+    }
+    public func withRemoteCallInterceptor(_ interceptor: some RemoteCallInterceptor) -> Self {
+        var copy = self
+        copy._remoteCallInterceptor = interceptor
+        return copy
     }
 }
 

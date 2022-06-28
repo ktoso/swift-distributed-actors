@@ -25,6 +25,182 @@ public protocol DistributedWorker: DistributedActor {
     distributed func submit(work: WorkItem) async throws -> WorkResult
 }
 
+protocol ClusterSystemInitializable: DistributedActor where ActorSystem == ClusterSystem {
+    init(actorSystem: ClusterSystem)
+}
+
+public struct LocalSingletonCallHandler: DistributedTargetInvocationResultHandler {
+    public typealias SerializationRequirement = any Codable
+
+//    var continuation: CheckedContinuation<Any, Never>! = nil
+    
+    init() {
+    }
+
+    public func onReturn<Success: Codable>(value: Success) async throws {
+        pprint("RETURN THE: \(value)")
+    }
+
+    public func onReturnVoid() async throws {
+        fatalError("TODO")
+    }
+
+    public func onThrow<Err: Error>(error: Err) async throws {
+        
+    }
+}
+
+public actor DistributedSingletonBoss {
+    let actorSystem: ClusterSystem
+    var factories: [String: (ClusterSystem) -> any DistributedActor]
+    
+    var instance: [ActorID: any DistributedActor] // FIXME: we could well-type them
+    
+    init(actorSystem: ClusterSystem) {
+        self.actorSystem = actorSystem
+        self.factories = [:]
+    }
+    
+    func shouldWeHost() async -> Bool {
+        return true
+    }
+    
+    func interceptRemoteCall<Act, Err, Res>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout ClusterSystem.InvocationEncoder,
+        throwing: Err.Type,
+        returning: Res.Type
+    ) async throws -> Res
+        where Act: DistributedActor,
+        Act.ID == ActorID,
+        Err: Error,
+        Res: Codable
+    {
+        // TODO: find if we know this singleton...
+        guard await shouldWeHost() else {
+            // TODO: forward it somewhere else
+            fatalError("implement forwarding")
+        }
+        
+        // FIXME: get the message from encoder directly, without encoding
+        let message = InvocationMessage(
+            callID: .init(),
+            targetIdentifier: target.identifier,
+            arguments: []
+        )
+        
+        withCheckedContinuation { cc in
+            let resultHandler = ClusterInvocationResultHandler(cc)
+            
+            //        let resultHandler = LocalSingletonCallHandler()
+            var decoder = ClusterSystem.InvocationDecoder(system: actorSystem, message: message)
+            
+            if let existing = self.instance[actor.id] {
+                actorSystem.executeDistributedTarget(
+                    on: actor,
+                    target: target,
+                    invocationDecoder: &decoder,
+                    handler: resultHandler)
+            }
+        }
+    }
+    
+    func host<Act>(_ type: Act.Type, makeSingleton: @escaping (ClusterSystem) -> Act) async throws -> Act
+    where Act: DistributedActor, Act.ActorSystem == ClusterSystem {
+        let id = actorSystem.assignID(Act.self) // special one for singleton
+        // FIXME: let id = actorSystem.assignSingletonID(Act.self, tags...)
+        
+        let interceptor = SingletonCallInterceptor(Act.self, through: self, id: id)
+        
+        self.factories["\(Act.self)"] = makeSingleton
+        
+        actorSystem.log.warning("boss: hosting....")
+        
+        let proxiedAct = try _Props.$forSpawn.withValue(_Props.forSpawn.withRemoteCallInterceptor(interceptor)) {
+            try Act.resolve(id: id, using: actorSystem)
+        }
+        
+        actorSystem.log.warning("boss: resolved as \(proxiedAct)")
+        
+        return proxiedAct
+    }
+    
+    func proxy<Act>(_ type: Act.Type) async throws -> Act where Act: DistributedActor, Act.ActorSystem == ClusterSystem {
+        let id = actorSystem.assignID(Act.self) // special one for singleton
+        // FIXME: let id = actorSystem.assignSingletonID(Act.self, tags...)
+        
+        let interceptor = SingletonCallInterceptor(Act.self, through: self, id: id)
+        
+        let proxiedAct = try _Props.$forSpawn.withValue(_Props.forSpawn.withRemoteCallInterceptor(interceptor)) {
+            try Act.resolve(id: id, using: actorSystem)
+        }
+        
+        return proxiedAct
+    }
+}
+
+public protocol RemoteCallInterceptor {
+    func interceptRemoteCall<Act, Err, Res>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout ClusterSystem.InvocationEncoder,
+        throwing: Err.Type,
+        returning: Res.Type
+    ) async throws -> Res
+        where Act: DistributedActor,
+        Act.ID == ActorID,
+        Err: Error,
+        Res: Codable
+    
+    func interceptRemoteCallVoid<Act, Err>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout ClusterSystem.InvocationEncoder,
+        throwing: Err.Type
+    ) async throws
+        where Act: DistributedActor,
+        Act.ID == ActorID,
+        Err: Error
+}
+
+struct SingletonCallInterceptor<Act: DistributedActor>: RemoteCallInterceptor where Act.ActorSystem == ClusterSystem {
+    
+    let boss: DistributedSingletonBoss
+    
+    init(_ type: Act.Type, through boss: DistributedSingletonBoss, id: ActorID) {
+        self.boss = boss
+    }
+    
+    func interceptRemoteCall<Act, Err, Res>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout ClusterSystem.InvocationEncoder,
+        throwing: Err.Type,
+        returning: Res.Type
+    ) async throws -> Res
+        where Act: DistributedActor,
+        Act.ID == ActorID,
+        Err: Error,
+        Res: Codable
+    {
+        try await boss.interceptRemoteCall(on: Actor, target: target, invocation: &invocation, throwing: throwing, returning: returning)
+    }
+    
+    func interceptRemoteCallVoid<Act, Err>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout ClusterSystem.InvocationEncoder,
+        throwing: Err.Type
+    ) async throws
+        where Act: DistributedActor,
+        Act.ID == ActorID,
+        Err: Error
+    {
+        fatalError("intercept: \(#function)")
+    }
+}
+
 // ==== ----------------------------------------------------------------------------------------------------------------
 // MARK: WorkerPool
 
@@ -118,6 +294,7 @@ public distributed actor WorkerPool<Worker: DistributedWorker>: DistributedWorke
         let worker = try await self.selectWorker()
         self.actorSystem.log.log(level: self.logLevel, "Submitting [\(work)] to [\(worker)]")
         return try await worker.submit(work: work)
+//        fatalError()
     }
 
     // FIXME: make this a computed property instead when https://github.com/apple/swift/pull/42321 is in
