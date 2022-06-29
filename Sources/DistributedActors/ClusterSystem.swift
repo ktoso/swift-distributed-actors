@@ -997,9 +997,10 @@ extension ClusterSystem {
     func interceptCalls<Act, Interceptor>(
         to actorType: Act.Type,
         metadata: ActorMetadata,
-        interceptor: Interceptor) throws -> Act
-    where Act: DistributedActor, Act.ActorSystem == ClusterSystem,
-          Interceptor: RemoteCallInterceptor
+        interceptor: Interceptor
+    ) throws -> Act
+        where Act: DistributedActor, Act.ActorSystem == ClusterSystem,
+        Interceptor: RemoteCallInterceptor
     {
         /// Prepare a distributed actor context base, such that the reserved ID will contain the interceptor in the context.
         let baseContext = DistributedActorContext(lifecycle: nil, remoteCallInterceptor: interceptor)
@@ -1244,7 +1245,6 @@ public struct ClusterInvocationResultHandler: DistributedTargetInvocationResultH
         case localDirectReturn(CheckedContinuation<Any, Error>)
     }
 
-
     init(system: ClusterSystem, callID: ClusterSystem.CallID, channel: Channel, recipient: ClusterSystem.ActorID) {
         self.state = .remoteCall(system: system, callID: callID, channel: channel, recipient: recipient)
     }
@@ -1252,7 +1252,6 @@ public struct ClusterInvocationResultHandler: DistributedTargetInvocationResultH
     init(directReturnContinuation: CheckedContinuation<Any, Error>) {
         self.state = .localDirectReturn(directReturnContinuation)
     }
-
 
     public func onReturn<Success: Codable>(value: Success) async throws {
         switch self.state {
