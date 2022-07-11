@@ -26,6 +26,54 @@ final class ActorSingletonPluginClusteredTests: ClusteredActorSystemsXCTestCase 
         ]
     }
 
+    func test_da_singletonByClusterLeadership_happyPath() throws {
+        var singletonSettings = ActorSingletonSettings(name: GreeterSingleton.name)
+        singletonSettings.allocationStrategy = .byLeadership
+
+        let first = self.setUpNode("first") { settings in
+            settings += ActorSingletonPlugin()
+
+            settings.node.port = 7111
+            settings.autoLeaderElection = .lowestReachable(minNumberOfMembers: 3)
+            settings.serialization.register(GreeterSingleton.Message.self)
+        }
+        let second = self.setUpNode("second") { settings in
+            settings += ActorSingletonPlugin()
+
+            settings.node.port = 8222
+            settings.autoLeaderElection = .lowestReachable(minNumberOfMembers: 3)
+            settings.serialization.register(GreeterSingleton.Message.self)
+        }
+        let third = self.setUpNode("third") { settings in
+            settings += ActorSingletonPlugin()
+
+            settings.node.port = 9333
+            settings.autoLeaderElection = .lowestReachable(minNumberOfMembers: 3)
+            settings.serialization.register(GreeterSingleton.Message.self)
+        }
+
+        // Bring up `ActorSingletonProxy` before setting up cluster (https://github.com/apple/swift-distributed-actors/issues/463)
+        let ref1 = try first.singleton.host(TheSingleton.self, settings: singletonSettings) { actorSystem in
+            TheSingleton("Hello-1", actorSystem: actorSystem)
+        }
+        let ref2 = try second.singleton.host(TheSingleton.self, settings: singletonSettings { actorSystem in
+            TheSingleton("Hello-2", actorSystem: actorSystem)
+        }
+        let ref3 = try third.singleton.host(TheSingleton.self, settings: singletonSettings { actorSystem in
+            TheSingleton("Hello-3", actorSystem: actorSystem)
+        }
+
+        first.cluster.join(node: second.cluster.uniqueNode.node)
+        third.cluster.join(node: first.cluster.uniqueNode.node)
+
+        // `first` will be the leader (lowest address) and runs the singleton
+        try await self.ensureNodes(.up, nodes: first.cluster.uniqueNode, second.cluster.uniqueNode, third.cluster.uniqueNode)
+
+        try self.assertSingletonRequestReply(first, singletonRef: ref1, message: "Alice", expect: "Hello-1 Alice!")
+        try self.assertSingletonRequestReply(second, singletonRef: ref2, message: "Bob", expect: "Hello-1 Bob!")
+        try self.assertSingletonRequestReply(third, singletonRef: ref3, message: "Charlie", expect: "Hello-1 Charlie!")
+    }
+
     func test_singletonByClusterLeadership_happyPath() throws {
         var singletonSettings = ActorSingletonSettings(name: GreeterSingleton.name)
         singletonSettings.allocationStrategy = .byLeadership
@@ -297,5 +345,16 @@ struct GreeterSingleton {
             }
             return .same
         }
+    }
+}
+
+distributed actor TheSingleton {
+
+    init(actorSystem: ActorSystem) {
+        self.actorSystem = actorSystem
+    }
+
+    distributed func greet(name: String) -> String {
+        "\(self.greeting) \(name)! (from node: \(self.id.node)"
     }
 }

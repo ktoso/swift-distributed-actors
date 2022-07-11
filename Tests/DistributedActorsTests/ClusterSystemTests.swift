@@ -381,47 +381,6 @@ final class ClusterSystemTests: ClusterSystemXCTestCase {
         }
     }
 
-    func test_remoteCall_interceptor() async throws {
-        let local = await setUpNode("local") { settings in
-            settings.enabled = true
-        }
-        let remote = await setUpNode("remote") { settings in
-            settings.enabled = true
-        }
-        local.cluster.join(node: remote.cluster.uniqueNode)
-
-        let greeter = Greeter(actorSystem: local, greeting: "hello")
-        let localGreeter = try Greeter.resolve(id: greeter.id, using: remote)
-
-        let otherGreeter = Greeter(actorSystem: local, greeting: "HI!!!")
-        localGreeter.id.context.remoteCallInterceptor = GreeterRemoteCallInterceptor(system: remote, greeter: otherGreeter)
-
-        let value = try await shouldNotThrow {
-            try await localGreeter.greet()
-        }
-        value.shouldEqual("HI!!!")
-    }
-
-    func test_remoteCallVoid_interceptor() async throws {
-        let local = await setUpNode("local") { settings in
-            settings.enabled = true
-        }
-        let remote = await setUpNode("remote") { settings in
-            settings.enabled = true
-        }
-        local.cluster.join(node: remote.cluster.uniqueNode)
-
-        let greeter = Greeter(actorSystem: local, greeting: "hello")
-        let localGreeter = try Greeter.resolve(id: greeter.id, using: remote)
-
-        let otherGreeter = Greeter(actorSystem: local, greeting: "HI!!!")
-        localGreeter.id.context.remoteCallInterceptor = GreeterRemoteCallInterceptor(system: remote, greeter: otherGreeter)
-
-        try await shouldNotThrow {
-            try await localGreeter.muted()
-        }
-        try self.capturedLogs(of: local).awaitLogContaining(self.testKit(local), text: "Muted greeting: HI!!!")
-    }
 }
 
 private distributed actor Greeter {
@@ -470,58 +429,5 @@ private distributed actor Greeter {
     }
 }
 
-private struct GreeterRemoteCallInterceptor: RemoteCallInterceptor {
-    let system: ClusterSystem
-    let greeter: Greeter
-
-    func interceptRemoteCall<Act, Err, Res>(
-        on actor: Act,
-        target: RemoteCallTarget,
-        invocation: inout ClusterSystem.InvocationEncoder,
-        throwing: Err.Type,
-        returning: Res.Type
-    ) async throws -> Res
-        where Act: DistributedActor,
-        Act.ID == ActorID,
-        Err: Error,
-        Res: Codable
-    {
-        guard let greeter = self.greeter as? Act else {
-            throw GreeterRemoteCallInterceptorError()
-        }
-
-        return try await self.system.remoteCall(
-            on: greeter, // Change the receiver
-            target: target,
-            invocation: &invocation,
-            throwing: throwing,
-            returning: returning
-        )
-    }
-
-    func interceptRemoteCallVoid<Act, Err>(
-        on actor: Act,
-        target: RemoteCallTarget,
-        invocation: inout ClusterSystem.InvocationEncoder,
-        throwing: Err.Type
-    ) async throws
-        where Act: DistributedActor,
-        Act.ID == ActorID,
-        Err: Error
-    {
-        guard let greeter = self.greeter as? Act else {
-            throw GreeterRemoteCallInterceptorError()
-        }
-
-        return try await self.system.remoteCallVoid(
-            on: greeter, // Change the receiver
-            target: target,
-            invocation: &invocation,
-            throwing: throwing
-        )
-    }
-}
-
 private struct GreeterCodableError: Error, Codable {}
 private struct GreeterNonCodableError: Error {}
-private struct GreeterRemoteCallInterceptorError: Error, Codable {}
