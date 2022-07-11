@@ -44,6 +44,7 @@ public final class DistributedActorContext {
     }
 }
 
+// TODO: move to separate file
 internal protocol RemoteCallInterceptor {
     func interceptRemoteCall<Act, Err, Res>(
         on actor: Act,

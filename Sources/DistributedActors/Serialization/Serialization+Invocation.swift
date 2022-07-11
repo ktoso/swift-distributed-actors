@@ -62,11 +62,10 @@ public struct ClusterInvocationDecoder: DistributedTargetInvocationDecoder {
 
     let state: _State
     enum _State {
-        case remoteCall(system: ClusterSystem, message: InvocationMessage)
+        case remoteCall(system: ClusterSystem,message: InvocationMessage)
         // Potentially used by interceptors, when invoking a local target directly
         case localProxyCall(ClusterSystem.InvocationEncoder)
     }
-
     var argumentIdx = 0
 
     public init(system: ClusterSystem, message: InvocationMessage) {
