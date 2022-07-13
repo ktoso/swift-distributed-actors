@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Distributed
-import DistributedActors
+@testable import DistributedActors
 import DistributedActorsTestKit
 import XCTest
 
@@ -91,15 +91,56 @@ final class ActorIDMetadataTests: ClusteredActorSystemsXCTestCase {
         singleton.metadata.exampleClusterSingletonID.shouldEqual("the-boss")
     }
     
-    func test_metadata_wellKnown_serialized() async throws {
+    func test_metadata_wellKnown_coding() async throws {
         let system = await setUpNode("first")
         let singleton = await ThereCanBeOnlyOneClusterSingleton(actorSystem: system)
 
         let encoded = try JSONEncoder().encode(singleton)
         let encodedString = String(data: encoded, encoding: .utf8)!
-        encodedString.shouldContain("\"wellKnown\":\"boss-singleton\"")
+        encodedString.shouldContain("\"$wellKnown\":\"boss-singleton\"")
         
         let back = try! JSONDecoder().decode(ActorID.self, from: encoded)
         back.metadata.wellKnown.shouldEqual("boss-singleton")
     }
+    
+    func test_metadata_wellKnown_proto() async throws {
+        let system = await setUpNode("first")
+        let singleton = await ThereCanBeOnlyOneClusterSingleton(actorSystem: system)
+
+        let context = Serialization.Context(log: system.log, system: system, allocator: .init())
+        let encoded = try singleton.id.toProto(context: context)
+        print("ENCODED: \(encoded)")
+        
+        let back = try ActorID(fromProto: encoded, context: context)
+        back.metadata.wellKnown.shouldEqual(singleton.id.metadata.wellKnown)
+    }
+    
+    func test_metadata_wellKnown_equality() async throws {
+        let system = await setUpNode("first")
+        
+        let singleton = await ThereCanBeOnlyOneClusterSingleton(actorSystem: system)
+
+        let madeUpID = ActorID(local: system.cluster.uniqueNode, path: ._user, incarnation: .wellKnown)
+        madeUpID.metadata.wellKnown = singleton.id.metadata.wellKnown!
+        
+        // paths don't have to match at all, they'll be optional and a well known one would not have paths anyway
+        singleton.id.shouldEqual(madeUpID)
+        
+        let set: Set<ActorID> = [singleton.id, madeUpID]
+        set.count.shouldEqual(1)
+    }
+    
+    func test_metadata_userDefined_coding() async throws {
+        let system = await setUpNode("first")
+        let singleton = await ThereCanBeOnlyOneClusterSingleton(actorSystem: system)
+
+        let encoded = try JSONEncoder().encode(singleton)
+        let encodedString = String(data: encoded, encoding: .utf8)!
+        encodedString.shouldContain("\"$wellKnown\":\"boss-singleton\"")
+        
+        let back = try! JSONDecoder().decode(ActorID.self, from: encoded)
+        back.metadata.wellKnown.shouldEqual("boss-singleton")
+    }
+    
+    
 }

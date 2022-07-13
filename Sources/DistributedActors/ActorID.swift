@@ -274,30 +274,34 @@ extension DistributedActor where ActorSystem == ClusterSystem {
 
 extension ActorID: Hashable {
     public static func == (lhs: ActorID, rhs: ActorID) -> Bool {
-        
-        let incarnationMatches: Bool
         if let lhsWellKnownName = lhs.metadata.wellKnown,
            let rhsWellKnownName = rhs.metadata.wellKnown {
             // If we're comparing "well known" actors, we ignore the concrete incarnation,
             // and compare the well known name instead. This works for example for "$receptionist"
             // and other well known names, that can be resolved using them, without an incarnation number.
-            incarnationMatches = lhsWellKnownName == rhsWellKnownName
-        } else {
-            // quickest to check if the incarnations are the same
-            // if they happen to be equal, we don't know yet for sure if it's the same actor or not,
-            // as incarnation is just a random ID thus we need to compare the node and path as well
-            incarnationMatches = lhs.incarnation == rhs.incarnation &&
-                lhs.metadata.wellKnown == nil &&
-                rhs.metadata.wellKnown == nil
+            if lhsWellKnownName == rhsWellKnownName && lhs.uniqueNode == rhs.uniqueNode {
+                return true
+            }
         }
         
-        return incarnationMatches && lhs.uniqueNode == rhs.uniqueNode && lhs.path == rhs.path
+        // quickest to check if the incarnations are the same
+        // if they happen to be equal, we don't know yet for sure if it's the same actor or not,
+        // as incarnation is just a random ID thus we need to compare the node and path as well
+        return lhs.incarnation == rhs.incarnation &&
+            lhs.uniqueNode == rhs.uniqueNode &&
+            lhs.path == rhs.path
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(self.incarnation)
-        hasher.combine(self.uniqueNode)
-        hasher.combine(self.path)
+        if let wellKnownName = self.metadata.wellKnown {
+            hasher.combine(wellKnownName)
+        }
+//            hasher.combine(self.uniqueNode)
+//        } else {
+            hasher.combine(self.incarnation)
+            hasher.combine(self.uniqueNode)
+            hasher.combine(self.path)
+//        }
     }
 }
 
@@ -547,11 +551,11 @@ extension ActorPath {
     public static let _system: ActorPath = try! ActorPath(root: "system")
 
     internal func makeLocalID(on node: UniqueNode, incarnation: ActorIncarnation) -> ActorID {
-        .init(local: node, path: self, incarnation: incarnation)
+        ActorID(local: node, path: self, incarnation: incarnation)
     }
 
     internal func makeRemoteID(on node: UniqueNode, incarnation: ActorIncarnation) -> ActorID {
-        .init(remote: node, path: self, incarnation: incarnation)
+        ActorID(remote: node, path: self, incarnation: incarnation)
     }
 }
 
@@ -931,91 +935,6 @@ extension UniqueNodeID: CustomStringConvertible {
 extension UniqueNodeID {
     public static func random() -> UniqueNodeID {
         UniqueNodeID(UInt64.random(in: 1 ... .max))
-    }
-}
-
-// ==== ----------------------------------------------------------------------------------------------------------------
-// MARK: Codable ActorID
-
-extension ActorID: Codable {
-    public func encode(to encoder: Encoder) throws {
-        let metadataSettings = encoder.actorSerializationContext?.system.settings.actorMetadata
-        let encodeCustomMetadata =
-            metadataSettings?.encodeCustomMetadata ?? ({ _, _ in () })
-
-        var container = encoder.container(keyedBy: ActorCoding.CodingKeys.self)
-        try container.encode(self.uniqueNode, forKey: ActorCoding.CodingKeys.node)
-        try container.encode(self.path, forKey: ActorCoding.CodingKeys.path) // TODO: remove as we remove the tree
-        try container.encode(self.incarnation, forKey: ActorCoding.CodingKeys.incarnation)
-
-        if !self.metadata.isEmpty {
-            var metadataContainer = container.nestedContainer(keyedBy: ActorCoding.MetadataKeys.self, forKey: ActorCoding.CodingKeys.metadata)
-
-            let keys = ActorMetadataKeys.__instance
-            func shouldPropagate<V: Sendable &  Codable>(_ key: ActorMetadataKey<V>, metadata: ActorMetadata) -> V? {
-                if metadataSettings == nil || metadataSettings!.propagateMetadata.contains(key.id) {
-                    if let value = metadata[key.id] {
-                        let value = value as! V // as!-safe, the keys guarantee we only store well typed values in metadata
-                        return value
-                    }
-                }
-                return nil
-            }
-            
-            // Handle well known metadata types
-            if let value = shouldPropagate(keys.path, metadata: self.metadata) {
-                try metadataContainer.encode(value, forKey: ActorCoding.MetadataKeys.path)
-            }
-            if let value = shouldPropagate(keys.type, metadata: self.metadata) {
-                try metadataContainer.encode(value.mangledName, forKey: ActorCoding.MetadataKeys.type)
-            }
-            if let value = shouldPropagate(keys.wellKnown, metadata: self.metadata) {
-                try metadataContainer.encode(value, forKey: ActorCoding.MetadataKeys.wellKnown)
-            }
-
-            try encodeCustomMetadata(self.metadata, &metadataContainer)
-        }
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: ActorCoding.CodingKeys.self)
-        let node = try container.decode(UniqueNode.self, forKey: ActorCoding.CodingKeys.node)
-        let path = try container.decodeIfPresent(ActorPath.self, forKey: ActorCoding.CodingKeys.path)
-        let incarnation = try container.decode(UInt32.self, forKey: ActorCoding.CodingKeys.incarnation)
-
-        self.init(remote: node, path: path, incarnation: ActorIncarnation(incarnation))
-
-        // Decode any tags:
-        if let metadataContainer = try? container.nestedContainer(keyedBy: ActorCoding.MetadataKeys.self, forKey: ActorCoding.CodingKeys.metadata) {
-            // tags container found, try to decode all known tags:
-
-            let metadata = ActorMetadata()
-            if let value = try? metadataContainer.decodeIfPresent(ActorPath.self, forKey: ActorCoding.MetadataKeys.path) {
-                metadata.path = value
-            }
-            if let value = try? metadataContainer.decodeIfPresent(String.self, forKey: ActorCoding.MetadataKeys.type) {
-                metadata.type = .init(mangledName: value)
-            }
-            if let value = try? metadataContainer.decodeIfPresent(String.self, forKey: ActorCoding.MetadataKeys.wellKnown) {
-                metadata.wellKnown = value
-            }
-            
-            if let context = decoder.actorSerializationContext {
-                let decodeCustomMetadata = context.system.settings.actorMetadata.decodeCustomMetadata
-                try decodeCustomMetadata(metadataContainer, self.metadata)
-
-//                for (key, value) in try decodeCustomMetadata(metadataContainer) {
-//                    func store(_: K.Type) {
-//                        if let value = tag.value as? K.Value {
-//                            self.metadata[K.self] = value
-//                        }
-//                    }
-//                    _openExistential(key, do: store) // the `as` here is required, because: inferred result type 'any ActorTagKey.Type' requires explicit coercion due to loss of generic requirements
-//                }
-            }
-            
-            self.context = .init(lifecycle: nil, remoteCallInterceptor: nil, metadata: metadata)
-        }
     }
 }
 
