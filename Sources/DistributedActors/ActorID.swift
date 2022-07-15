@@ -296,12 +296,9 @@ extension ActorID: Hashable {
         if let wellKnownName = self.metadata.wellKnown {
             hasher.combine(wellKnownName)
         }
-//            hasher.combine(self.uniqueNode)
-//        } else {
-            hasher.combine(self.incarnation)
-            hasher.combine(self.uniqueNode)
-            hasher.combine(self.path)
-//        }
+        hasher.combine(self.incarnation)
+        hasher.combine(self.uniqueNode)
+        hasher.combine(self.path)
     }
 }
 
