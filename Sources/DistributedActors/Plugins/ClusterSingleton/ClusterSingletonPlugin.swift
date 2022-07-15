@@ -35,17 +35,7 @@ public actor ClusterSingletonPlugin {
 
     private var system: ClusterSystem!
 
-    public func proxy<Act>(
-        of type: Act.Type,
-        name: String
-    ) async throws -> Act
-        where Act: ClusterSingletonProtocol
-    {
-        let settings = ClusterSingletonSettings(name: name)
-        return try await self.proxy(of: type, settings: settings, makeInstance: nil)
-    }
-
-    public func proxy<Act>(
+    internal func proxy<Act>(
         of type: Act.Type,
         settings: ClusterSingletonSettings,
         makeInstance factory: ((ClusterSystem) async throws -> Act)? = nil
@@ -84,7 +74,7 @@ public actor ClusterSingletonPlugin {
         return try await self.host(of: type, settings: settings, makeInstance: factory)
     }
 
-    public func host<Act>(
+    internal func host<Act>(
         of type: Act.Type = Act.self,
         settings: ClusterSingletonSettings,
         makeInstance factory: @escaping (ClusterSystem) async throws -> Act
@@ -110,9 +100,10 @@ extension ClusterSingletonPlugin: _Plugin {
     }
 
     public func stop(_ system: ClusterSystem) async {
-        for (_, (_, boss)) in self.singletons {
+        for (_, boss) in self.singletons.values {
             await boss.stop()
         }
+        self.system = nil
     }
 }
 

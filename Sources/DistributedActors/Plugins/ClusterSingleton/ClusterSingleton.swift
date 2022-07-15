@@ -93,6 +93,10 @@ internal distributed actor ClusterSingletonBoss<Act: ClusterSingletonProtocol>: 
     }
 
     deinit {
+        guard !__isRemoteActor(self) else {
+            return
+        }
+        
         // FIXME(distributed): actor-isolated instance method 'handOver(to:)' can not be referenced from a non-isolated context; this is an error in Swift 6
         // TODO: perhaps we can figure out where `to` is next and hand over gracefully?
 //        self.handOver(to: nil)

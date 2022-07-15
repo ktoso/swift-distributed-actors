@@ -58,9 +58,6 @@ public struct _Props: @unchecked Sendable {
     /// Makes `DistributedActor.resolve` use the designated ID, rather than assigning one.
     internal var _designatedActorID: ActorID?
 
-    /// Makes `DistributedActor.resolve` use the designated ID, rather than assigning one.
-    internal var _designatedActorID: ActorID?
-
     /// INTERNAL API: Marks that this ref is spawned in service of a 'distributed actor'.
     /// This is a temporary solution until we move all the infrastructure onto distributed actors.
     @usableFromInline

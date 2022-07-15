@@ -293,9 +293,9 @@ extension ActorID: Hashable {
     }
 
     public func hash(into hasher: inout Hasher) {
-        if let wellKnownName = self.metadata.wellKnown {
-            hasher.combine(wellKnownName)
-        }
+//        if let wellKnownName = self.metadata.wellKnown {
+//            hasher.combine(wellKnownName)
+//        }
         hasher.combine(self.incarnation)
         hasher.combine(self.uniqueNode)
         hasher.combine(self.path)

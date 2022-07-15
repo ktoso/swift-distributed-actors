@@ -32,10 +32,5 @@ final class ClusterSingletonPluginTests: ClusterSystemXCTestCase {
         }
         let reply = try await ref.greet(name: "Charlie")
         reply.shouldStartWith(prefix: "Hello Charlie!")
-
-        // singleton.ref (proxy-only)
-        let proxyRef = try await test.singleton.proxy(of: TheSingleton.self, name: TheSingleton.name)
-        let proxyReply = try await proxyRef.greet(name: "Charlene")
-        proxyReply.shouldStartWith(prefix: "Hello Charlene!")
     }
 }

@@ -26,36 +26,41 @@ final class ClusterSingletonPluginClusteredTests: ClusteredActorSystemsXCTestCas
         ]
     }
 
-    func test_singletonByClusterLeadership_happyPath() async throws {
-        throw XCTSkip("!!! Skipping test \(#function) !!!") // FIXME(distributed): disable test until https://github.com/apple/swift-distributed-actors/pull/1001
+    func test_da_singletonByClusterLeadership_happyPath() async throws {
+        let name = "the-one"
 
-        var singletonSettings = ClusterSingletonSettings(name: TheSingleton.name)
+        var singletonSettings = ClusterSingletonSettings(name: name)
         singletonSettings.allocationStrategy = .byLeadership
 
         let first = await self.setUpNode("first") { settings in
+            settings += ClusterSingletonPlugin()
+
             settings.node.port = 7111
             settings.autoLeaderElection = .lowestReachable(minNumberOfMembers: 3)
-            settings += ClusterSingletonPlugin()
         }
         let second = await self.setUpNode("second") { settings in
+            settings += ClusterSingletonPlugin()
+
             settings.node.port = 8222
             settings.autoLeaderElection = .lowestReachable(minNumberOfMembers: 3)
-            settings += ClusterSingletonPlugin()
         }
         let third = await self.setUpNode("third") { settings in
+            settings += ClusterSingletonPlugin()
+
             settings.node.port = 9333
             settings.autoLeaderElection = .lowestReachable(minNumberOfMembers: 3)
-            settings += ClusterSingletonPlugin()
         }
 
-        // Bring up `ClusterSingletonBoss` before setting up cluster (https://github.com/apple/swift-distributed-actors/issues/463)
-        let ref1 = try await first.singleton.host(of: TheSingleton.self, settings: singletonSettings) { actorSystem in
+        // let ref1 = try await first.singleton.host(name: name, settings: singletonSettings) { actorSystem in
+        let ref1 = try await first.singleton.host(settings: singletonSettings) { actorSystem in
             TheSingleton(greeting: "Hello-1", actorSystem: actorSystem)
         }
-        let ref2 = try await second.singleton.host(of: TheSingleton.self, settings: singletonSettings) { actorSystem in
+        // let ref2 = try await second.singleton.host(name: name, settings: singletonSettings) { actorSystem in
+        let ref2 = try await second.singleton.host(settings: singletonSettings) { actorSystem in
             TheSingleton(greeting: "Hello-2", actorSystem: actorSystem)
         }
-        let ref3 = try await third.singleton.host(of: TheSingleton.self, settings: singletonSettings) { actorSystem in
+        // let ref3 = try await third.singleton.host(name: name, settings: singletonSettings) { actorSystem in
+        let ref3 = try await third.singleton.host(settings: singletonSettings) { actorSystem in
             TheSingleton(greeting: "Hello-3", actorSystem: actorSystem)
         }
 
@@ -63,11 +68,11 @@ final class ClusterSingletonPluginClusteredTests: ClusteredActorSystemsXCTestCas
         third.cluster.join(node: first.cluster.uniqueNode.node)
 
         // `first` will be the leader (lowest address) and runs the singleton
-        try await self.ensureNodes(.up, on: first, nodes: second.cluster.uniqueNode, third.cluster.uniqueNode)
+        try await first.cluster.waitFor([second.cluster.uniqueNode, third.cluster.uniqueNode], .up, within: .seconds(10))
 
-        try await self.assertSingletonRequestReply(first, singleton: ref1, greetingName: "Alice", expectedPrefix: "Hello-1 Alice!")
-        try await self.assertSingletonRequestReply(second, singleton: ref2, greetingName: "Bob", expectedPrefix: "Hello-1 Bob!")
-        try await self.assertSingletonRequestReply(third, singleton: ref3, greetingName: "Charlie", expectedPrefix: "Hello-1 Charlie!")
+        try await self.assertSingletonRequestReply(ref1, greet: "Alice", expectedPrefix: "Hello-1 Alice!")
+        try await self.assertSingletonRequestReply(ref2, greet: "Bob", expectedPrefix: "Hello-1 Bob!")
+        try await self.assertSingletonRequestReply(ref3, greet: "Charlie", expectedPrefix: "Hello-1 Charlie!")
     }
 
     func test_remoteCallShouldFailAfterAllocationTimedOut() async throws {
@@ -99,7 +104,7 @@ final class ClusterSingletonPluginClusteredTests: ClusteredActorSystemsXCTestCas
         // `first` will be the leader (lowest address) and runs the singleton
         try await self.ensureNodes(.up, on: first, nodes: second.cluster.uniqueNode)
 
-        try await self.assertSingletonRequestReply(second, singleton: ref2, greetingName: "Bob", expectedPrefix: "Hello-1 Bob!")
+        try await self.assertSingletonRequestReply(ref2, greet: "Bob", expectedPrefix: "Hello-1 Bob!")
 
         let firstNode = first.cluster.uniqueNode
         first.cluster.leave()
@@ -306,11 +311,14 @@ final class ClusterSingletonPluginClusteredTests: ClusteredActorSystemsXCTestCas
              pinfo("Nodes communicated successfully with singleton on [fourth]")
          }
      */
+}
 
+extension ClusterSingletonPluginClusteredTests {
+    
     /// Since during re-balancing it may happen that a message gets lost, we send messages a few times and only if none "got through" it would be a serious error.
-    private func assertSingletonRequestReply(_ system: ClusterSystem, singleton: TheSingleton, greetingName: String, expectedPrefix: String) async throws {
-        let testKit: ActorTestKit = self.testKit(system)
-
+    private func assertSingletonRequestReply(_ singleton: TheSingleton, greet greetingName: String, expectedPrefix: String) async throws {
+        let testKit: ActorTestKit = self.testKit(singleton.actorSystem)
+        
         var attempts = 0
         try await testKit.eventually(within: .seconds(10)) {
             attempts += 1
@@ -321,7 +329,7 @@ final class ClusterSingletonPluginClusteredTests: ClusteredActorSystemsXCTestCas
             } catch {
                 throw TestError(
                     """
-                    Received no reply from singleton [\(singleton)] while sending from [\(system.cluster.uniqueNode.node)], \
+                    Received no reply from singleton [\(singleton)] while sending from [\(singleton.actorSystem.cluster.uniqueNode.node)], \
                     perhaps request was lost. Sent greeting [\(greetingName)] and expected prefix: [\(expectedPrefix)] (attempts: \(attempts))
                     """)
             }

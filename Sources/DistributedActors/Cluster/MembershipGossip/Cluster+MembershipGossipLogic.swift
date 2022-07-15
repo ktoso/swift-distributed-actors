@@ -153,6 +153,10 @@ final class MembershipGossipLogic: GossipLogic, CustomStringConvertible {
 
     func receiveGossip(_ gossip: Gossip, from peer: _AddressableActorRef) -> Acknowledgement? {
         // 1) mark that from that specific peer, we know it observed at least that version
+        print("PEER: \(peer.id.fullDescription)")
+        for p in self.lastGossipFrom.keys {
+            print("KEY: \(p.id.fullDescription)")
+        }
         self.lastGossipFrom[peer] = gossip
 
         // 2) move forward the gossip we store
