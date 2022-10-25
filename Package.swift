@@ -17,6 +17,12 @@ let products: [PackageDescription.Product] = [
         name: "DistributedCluster",
         targets: ["DistributedCluster"]
     ),
+
+    // TODO(beta): remove module before stable 1.0 release; this is only for compatibility and migration between beta-2 and beta-3
+    .library(
+        name: "DistributedActors",
+        targets: ["DistributedActors"]
+    ),
 ]
 
 // ==== ----------------------------------------------------------------------------------------------------------------
@@ -44,6 +50,14 @@ var targets: [PackageDescription.Target] = [
             .product(name: "ServiceDiscovery", package: "swift-service-discovery"),
             .product(name: "Backtrace", package: "swift-backtrace"),
             .product(name: "AsyncAlgorithms", package: "swift-async-algorithms"),
+        ]
+    ),
+
+    // TODO(beta): remove module before stable 1.0 release; this is only for compatibility and migration between beta-2 and beta-3
+    .target(
+        name: "DistributedActors",
+        dependencies: [
+            "DistributedCluster",
         ]
     ),
 
