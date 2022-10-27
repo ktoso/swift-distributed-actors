@@ -293,7 +293,7 @@ extension _Children {
         let childOpt = self.container[name]
         switch childOpt {
         case .some(.cell(let cell)) where self._markAsStoppingChild(identifiedBy: cell.receivesSystemMessages.id):
-            cell.receivesSystemMessages._sendSystemMessage(.stop, file: #filePath, line: #line)
+            cell.receivesSystemMessages._sendSystemMessage(.stop, file: #fileID, line: #line)
             return true
         case .some(.adapter(let ref)) where includeAdapters:
             ref.stop()

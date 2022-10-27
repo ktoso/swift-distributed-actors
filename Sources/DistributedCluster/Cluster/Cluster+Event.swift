@@ -213,7 +213,7 @@ extension Cluster {
         #endif
 
         #if DEBUG
-        public init?(oldLeader: Cluster.Member?, newLeader: Cluster.Member?, file: String = #filePath, line: UInt = #line) {
+        public init?(oldLeader: Cluster.Member?, newLeader: Cluster.Member?, file: String = #fileID, line: UInt = #line) {
             guard oldLeader != newLeader else {
                 return nil
             }

@@ -79,7 +79,7 @@ public struct _AddressableActorRef: _DeathWatchable, Hashable {
         }
     }
 
-    func _sendSystemMessage(_ message: _SystemMessage, file: String = #filePath, line: UInt = #line) {
+    func _sendSystemMessage(_ message: _SystemMessage, file: String = #fileID, line: UInt = #line) {
         self.ref._sendSystemMessage(message, file: file, line: line)
     }
 }
@@ -104,18 +104,18 @@ extension _AddressableActorRef {
 // MARK: Internal or unsafe methods
 
 extension _AddressableActorRef: _ReceivesSystemMessages {
-    public func _tellOrDeadLetter(_ message: Any, file: String = #filePath, line: UInt = #line) {
+    public func _tellOrDeadLetter(_ message: Any, file: String = #fileID, line: UInt = #line) {
         self.ref._tellOrDeadLetter(message, file: file, line: line)
     }
 
-    public func _dropAsDeadLetter(_ message: Any, file: String = #filePath, line: UInt = #line) {
+    public func _dropAsDeadLetter(_ message: Any, file: String = #fileID, line: UInt = #line) {
         self.ref._dropAsDeadLetter(message, file: file, line: line)
     }
 
     public func _deserializeDeliver(
         _ messageBytes: Serialization.Buffer, using manifest: Serialization.Manifest,
         on pool: _SerializationPool,
-        file: String = #filePath, line: UInt = #line
+        file: String = #fileID, line: UInt = #line
     ) {
         self.ref._deserializeDeliver(messageBytes, using: manifest, on: pool, file: file, line: line)
     }
@@ -127,7 +127,7 @@ extension _AddressableActorRef: _ReceivesSystemMessages {
 
 extension _RemoteClusterActorPersonality {
     @usableFromInline
-    internal func _tellUnsafe(_ message: Any, file: String = #filePath, line: UInt = #line) {
+    internal func _tellUnsafe(_ message: Any, file: String = #fileID, line: UInt = #line) {
         guard let _message = message as? Message else {
             traceLog_Remote(self.system.cluster.uniqueNode, "\(self.id)._tellUnsafe [\(message)] failed because of invalid type; self: \(self); Sent at \(file):\(line)")
             return // TODO: drop the message

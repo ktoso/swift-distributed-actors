@@ -43,7 +43,7 @@ enum Gossiper {
             naming,
             of: GossipShell<Envelope, Acknowledgement>.Message.self,
             props: props,
-            file: #filePath, line: #line,
+            file: #fileID, line: #line,
             GossipShell<Envelope, Acknowledgement>(settings: settings, makeLogic: makeLogic).behavior
         )
         return GossiperControl(ref)

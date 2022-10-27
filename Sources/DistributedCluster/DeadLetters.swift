@@ -46,7 +46,7 @@ public struct DeadLetter: _NotActuallyCodableMessage {
     let sentAtFile: String?
     let sentAtLine: UInt?
 
-    public init(_ message: Any, recipient: ActorID?, sentAtFile: String? = #filePath, sentAtLine: UInt? = #line) {
+    public init(_ message: Any, recipient: ActorID?, sentAtFile: String? = #fileID, sentAtLine: UInt? = #line) {
         self.message = message
         self.recipient = recipient
         self.sentAtFile = sentAtFile
@@ -166,7 +166,7 @@ public final class DeadLetterOffice {
         .init(.deadLetters(self))
     }
 
-    func deliver(_ message: Any, file: String = #filePath, line: UInt = #line) {
+    func deliver(_ message: Any, file: String = #fileID, line: UInt = #line) {
         if let alreadyDeadLetter = message as? DeadLetter {
             self.onDeadLetter(alreadyDeadLetter, file: alreadyDeadLetter.sentAtFile ?? file, line: alreadyDeadLetter.sentAtLine ?? line)
         } else {

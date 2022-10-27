@@ -702,7 +702,7 @@ extension _Behavior {
     internal func interpretOrElse(
         context: _ActorContext<Message>,
         first: _Behavior<Message>, orElse second: _Behavior<Message>, message: Message,
-        file: StaticString = #filePath, line: UInt = #line
+        file: StaticString = #fileID, line: UInt = #line
     ) throws -> _Behavior<Message> {
         var nextBehavior = try first.interpretMessage(context: context, message: message, file: file, line: line)
         if nextBehavior.isUnhandled {
@@ -742,7 +742,7 @@ extension _Behavior {
         return self
     }
 
-    internal func validateAsInitialFatal(file: String = #filePath, line: UInt = #line) {
+    internal func validateAsInitialFatal(file: String = #fileID, line: UInt = #line) {
         switch self.underlying {
         case .same, .unhandled: fatalError("Illegal initial behavior! Attempted to spawn(\(self)) at \(file):\(line)")
         default: return
