@@ -60,7 +60,7 @@ distributed actor BuildLeader: ClusterSingleton, LifecycleWatch {
             "workers/count": "\(totalWorkers.count)",
         ])
 
-        let span = InstrumentationSystem.tracer.startSpan("all-\(self.remainingTasks.count)-builds", baggage: .current ?? .topLevel)
+        let span = InstrumentationSystem.tracer.startSpan("all-\(self.remainingTasks.count)-builds", baggage: .withActor(self))
         defer { span.end() }
 
         /// Keep searching for available workers until we have processed all BuildTasks.

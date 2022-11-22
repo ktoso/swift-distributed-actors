@@ -1153,7 +1153,12 @@ extension ClusterSystem {
         let baggage = Baggage.current ?? .topLevel
         // TODO: we can enrich this with actor and system information here if not already present.
 
-        return try await InstrumentationSystem.tracer.withSpan("\(target)", baggage: baggage, ofKind: .client) { _ in
+        return try await InstrumentationSystem.tracer.withSpan("\(target)", baggage: baggage, ofKind: .client) { span in
+            if let actorID = span.baggage.clusterActorID {
+                span.attributes["actor.id"] = "\(actorID.detailedDescription)"
+                span.attributes["cluster.node"] = "\(actorID.node)"
+            }
+
             let reply: RemoteCallReply<Res> = try await self.withCallID(on: actor.id, target: target) { callID in
                 var invocation = InvocationMessage(
                     callID: callID,
@@ -1224,7 +1229,12 @@ extension ClusterSystem {
         let baggage = Baggage.current ?? .topLevel
         // TODO: we can enrich this with actor and system information here if not already present.
 
-        return try await InstrumentationSystem.tracer.withSpan("\(target)", baggage: baggage, ofKind: .client) { _ in
+        return try await InstrumentationSystem.tracer.withSpan("\(target)", baggage: baggage, ofKind: .client) { span in
+            if let actorID = span.baggage.clusterActorID {
+                span.attributes["actor.id"] = "\(actorID.detailedDescription)"
+                span.attributes["cluster.node"] = "\(actorID.node)"
+            }
+
             let reply: RemoteCallReply<_Done> = try await self.withCallID(on: actor.id, target: target) { callID in
                 var invocation = InvocationMessage(
                     callID: callID,
@@ -1232,6 +1242,7 @@ extension ClusterSystem {
                     genericSubstitutions: invocation.genericSubstitutions,
                     arguments: arguments
                 )
+                span.attributes["remote.call.id"] = "\(callID)"
 
                 InstrumentationSystem.instrument.inject(baggage, into: &invocation, using: .invocationMessage)
 
@@ -1427,7 +1438,7 @@ extension ClusterSystem {
         var baggage: Baggage = .topLevel
         InstrumentationSystem.instrument.extract(invocation, into: &baggage, using: .invocationMessage)
 
-        Task {
+        Task { [baggage] in
             var decoder = ClusterInvocationDecoder(system: self, message: invocation)
 
             let target = invocation.target
@@ -1444,7 +1455,10 @@ extension ClusterSystem {
                     throw DeadLetterError(recipient: recipient)
                 }
 
-                try await InstrumentationSystem.tracer.withSpan("\(target)", baggage: baggage, ofKind: .server) { _ in
+                try await InstrumentationSystem.tracer.withSpan("\(target)", baggage: baggage, ofKind: .server) { span in
+                    span.attributes["actor.id"] = "\(recipient.detailedDescription)"
+                    span.attributes["cluster.node"] = "\(recipient.node)"
+                    span.attributes["remote.call.id"] = "\(invocation.callID)"
                     try await executeDistributedTarget(
                         on: actor,
                         target: target,

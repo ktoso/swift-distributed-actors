@@ -32,36 +32,38 @@ distributed actor BuildWorker: CustomStringConvertible {
     }
 
     distributed func work(on task: BuildTask, reportLogs log: LogCollector? = nil) async -> BuildResult {
-        if let activeBuildTask = self.activeBuildTask {
-            self.log.warning("Reject task [\(task)], already working on [\(activeBuildTask)]")
-            return .rejected
-        }
+        await Baggage.withActor(self) {
+            if let activeBuildTask = self.activeBuildTask {
+                self.log.warning("Reject task [\(task)], already working on [\(activeBuildTask)]")
+                return .rejected
+            }
 
-        self.activeBuildTask = task
-        defer { self.activeBuildTask = nil }
+            self.activeBuildTask = task
+            defer { self.activeBuildTask = nil }
 
-        await InstrumentationSystem.tracer.withSpan("build") { _ in
-            log?.log(line: "Starting build \(task)...")
-            await noisySleep(for: .seconds(1))
+            await InstrumentationSystem.tracer.withSpan("build") { _ in
+                log?.log(line: "Starting build \(task)...")
+                await noisySleep(for: .seconds(1))
 
-            for i in 1 ... 5 {
-                await InstrumentationSystem.tracer.withSpan("build-step-\(i)") { _ in
-                    log?.log(line: "Building file \(i)/5")
-                    await noisySleep(for: .seconds(1))
+                for i in 1 ... 5 {
+                    await InstrumentationSystem.tracer.withSpan("build-step-\(i)") { _ in
+                        log?.log(line: "Building file \(i)/5")
+                        await noisySleep(for: .seconds(1))
+                    }
                 }
             }
-        }
 
-        await InstrumentationSystem.tracer.withSpan("all-tests") { _ in
-            for i in 1 ... 5 {
-                await InstrumentationSystem.tracer.withSpan("test-step-\(i)") { _ in
-                    log?.log(line: "Testing \(i)/5")
-                    await noisySleep(for: .seconds(1))
+            await InstrumentationSystem.tracer.withSpan("all-tests") { _ in
+                for i in 1 ... 5 {
+                    await InstrumentationSystem.tracer.withSpan("test-step-\(i)") { _ in
+                        log?.log(line: "Testing \(i)/5")
+                        await noisySleep(for: .seconds(1))
+                    }
                 }
             }
-        }
 
-        return .successful
+            return .successful
+        }
     }
 
     public nonisolated var description: String {
