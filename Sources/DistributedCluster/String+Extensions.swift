@@ -210,3 +210,32 @@ extension String.StringInterpolation {
         self.appendLiteral("[\(ref.id.path)]")
     }
 }
+
+// ==== ----------------------------------------------------------------------------------------------------------------
+// MARK: Logger.MetadataValue.StringInterpolation custom label support
+
+// Logger.MetadataValue gained its own StringInterpolation type in swift-log, distinct from
+// DefaultStringInterpolation. Extend it to support the same custom labels available on
+// String.StringInterpolation so that metadata dict values can use \(reflecting:), \(pretty:),
+// and \(optional:) without explicit type conversions.
+extension Logger.MetadataValue.StringInterpolation {
+    internal mutating func appendInterpolation(reflecting subject: Any) {
+        self.appendLiteral(String(reflecting: subject))
+    }
+
+    internal mutating func appendInterpolation(reflecting subject: Any?) {
+        self.appendLiteral(String(reflecting: subject))
+    }
+
+    internal mutating func appendInterpolation(pretty subject: Any) {
+        if let prettySubject = subject as? CustomPrettyStringConvertible {
+            self.appendLiteral(prettySubject.prettyDescription)
+        } else {
+            self.appendLiteral(String(reflecting: subject))
+        }
+    }
+
+    internal mutating func appendInterpolation<T>(optional value: T?) {
+        self.appendLiteral(value.map { "\($0)" } ?? "nil")
+    }
+}

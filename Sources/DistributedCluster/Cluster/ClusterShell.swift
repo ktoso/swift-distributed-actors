@@ -164,8 +164,8 @@ internal class ClusterShell {
                 state.log.trace(
                     "Terminate association with \(reflecting: remoteNode), yet node not in membership already?",
                     metadata: [
-                        "cluster/membership": .string("\(pretty: state.membership)")
-                    ]
+                        "cluster/membership": .string("\(pretty: state.membership)"),
+                    ] as Logger.Metadata
                 )
             }  // else: Note that we CANNOT remove() just yet, as we only want to do this when all nodes have seen the down/leaving
         }
@@ -619,7 +619,7 @@ extension ClusterShell {
                     "gossip/incoming": .string("\(pretty: gossip)"),
                     "gossip/before": .string("\(pretty: beforeGossipMerge)"),
                     "gossip/now": .string("\(pretty: state.latestGossip)"),
-                ]
+                ] as Logger.Metadata
             )
 
             // we want to update the snapshot before the events are published
@@ -882,7 +882,7 @@ extension ClusterShell {
                         metadata: [
                             "membership/change": .string("\(optional: directive.membershipChange)"),
                             "membership": "\(state.membership)",
-                        ]
+                        ] as Logger.Metadata
                     )
                 } catch {
                     state.log.warning(
@@ -891,7 +891,7 @@ extension ClusterShell {
                             "membership/change": .string("\(optional: directive.membershipChange)"),
                             "membership": "\(state.membership)",
                             "association/error": "\(error)",
-                        ]
+                        ] as Logger.Metadata
                     )
                 }
 
@@ -1061,7 +1061,7 @@ extension ClusterShell {
                 metadata: [
                     "membership/change": .string("\(optional: directive.membershipChange)"),
                     "membership": "\(state.membership)",
-                ]
+                ] as Logger.Metadata
             )
         } catch {
             state.log.warning(
@@ -1070,7 +1070,7 @@ extension ClusterShell {
                     "membership/change": .string("\(optional: directive.membershipChange)"),
                     "membership": "\(state.membership)",
                     "association/error": "\(error)",
-                ]
+                ] as Logger.Metadata
             )
         }
 

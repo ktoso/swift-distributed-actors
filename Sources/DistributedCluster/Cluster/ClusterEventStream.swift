@@ -202,7 +202,7 @@ internal distributed actor ClusterEventStreamActor: LifecycleWatch {
                             Logger.MetadataValue.stringConvertible("\($0.key)")
                         }
                     ),
-                ]
+                ] as Logger.Metadata
             )
         } catch {
             self.log.error("Failed to apply [\(event)], error: \(error)")

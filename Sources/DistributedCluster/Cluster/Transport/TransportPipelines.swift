@@ -341,7 +341,7 @@ final class OutboundSerializationHandler: ChannelOutboundHandler {
                         "message": "\(transportEnvelope.underlyingMessage)",
                         "message/type": .string("\(reflecting: type(of: transportEnvelope.underlyingMessage as Any))"),
                         "recipient": "\(transportEnvelope.recipient)",
-                    ]
+                    ] as Logger.Metadata
                 )
                 // TODO: drop message when it fails to be serialized?
                 promise?.fail(error)

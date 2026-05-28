@@ -148,7 +148,7 @@ internal distributed actor DowningStrategyShell {
                     [
                         "downing/node": .string("\(reflecting: member.node)"),
                         "member/status/previous": "\(member.status)",
-                    ]
+                    ] as Logger.Metadata
                 )
             )
             self.actorSystem.cluster.down(member: member)
